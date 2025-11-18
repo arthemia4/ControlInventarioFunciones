@@ -1,0 +1,20 @@
+== REPORTE INVENTARIO BIO SALUD NATURAL SpA ==
+
+CATALOGO
+id,nombre,costo,precio,stock_actual
+1,Faja magnética,8990.00,17990.00,8.00
+2,Rodillera térmica,6990.00,14990.00,10.00
+3,Pulsera energética,1990.00,4990.00,25.00
+
+RESUMEN
+valor_inventario,191570.00
+valor_venta_potencial,418570.00
+
+MOVIMIENTOS
+fecha,id_producto,entrada,salida
+2025-11-17,1,10.00,0.00
+2025-11-17,2,15.00,0.00
+2025-11-17,3,20.00,0.00
+2025-11-17,1,0.00,2.00
+2025-11-17,2,0.00,5.00
+2025-11-17,3,5.00,0.00
