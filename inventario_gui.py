@@ -21,22 +21,14 @@ class InventarioApp:
         self.catalogo: List[Dict] = []
         self.movimientos: List[List] = []
         self.stock_inicial: Dict[int, float] = {}
-        
-        # Cargar catálogo inicial por defecto
-        self._cargar_catalogo_default()
+        self.archivo_actual: str = None  # Guardar ruta del archivo importado
         
         # Crear la interfaz
         self._crear_widgets()
         self._actualizar_tablas()
-    
-    def _cargar_catalogo_default(self):
-        """Carga el catálogo por defecto"""
-        self.catalogo = [
-            {"id": 1, "nombre": "Faja magnética", "costo": 8990.0, "precio": 17990.0},
-            {"id": 2, "nombre": "Rodillera térmica", "costo": 6990.0, "precio": 14990.0},
-            {"id": 3, "nombre": "Pulsera energética", "costo": 1990.0, "precio": 4990.0},
-        ]
-        self.stock_inicial = {p["id"]: 0.0 for p in self.catalogo}
+        
+        # Guardar automáticamente al cerrar
+        self.root.protocol("WM_DELETE_WINDOW", self._cerrar_aplicacion)
     
     def _crear_widgets(self):
         """Crea todos los widgets de la interfaz"""
@@ -92,6 +84,24 @@ class InventarioApp:
     
     def _crear_tab_catalogo(self):
         """Crea la pestaña de catálogo"""
+        
+        # Frame para búsqueda
+        frame_busqueda = tk.Frame(self.tab_catalogo, bg="white")
+        frame_busqueda.pack(fill=tk.X, padx=10, pady=10)
+        
+        tk.Label(frame_busqueda, text="🔍 Buscar por ID:", bg="white", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5)
+        
+        self.entry_buscar_id = tk.Entry(frame_busqueda, width=30, font=("Arial", 10))
+        self.entry_buscar_id.pack(side=tk.LEFT, padx=5)
+        self.entry_buscar_id.bind('<KeyRelease>', lambda e: self._buscar_producto())
+        
+        tk.Label(frame_busqueda, text="(separa con comas: 1,5,10)", bg="white", font=("Arial", 8), fg="#7f8c8d").pack(side=tk.LEFT, padx=5)
+        
+        btn_limpiar = tk.Button(frame_busqueda, text="✖ Limpiar", 
+                               command=self._limpiar_busqueda,
+                               bg="#95a5a6", fg="white", font=("Arial", 9, "bold"),
+                               padx=10, pady=4, cursor="hand2")
+        btn_limpiar.pack(side=tk.LEFT, padx=5)
         
         # Frame para la tabla
         frame_tabla = tk.Frame(self.tab_catalogo, bg="white")
@@ -359,6 +369,67 @@ class InventarioApp:
         total = sum(stock.get(p['id'], 0.0) * p['precio'] for p in self.catalogo)
         return round(total, 2)
     
+    # ========== BÚSQUEDA ==========
+    
+    def _buscar_producto(self):
+        """Busca productos por ID (múltiples IDs separados por comas) y filtra la tabla"""
+        busqueda = self.entry_buscar_id.get().strip()
+        
+        # Limpiar tabla
+        for item in self.tree_catalogo.get_children():
+            self.tree_catalogo.delete(item)
+        
+        # Obtener stock actual
+        stock = self._vector_stock_actual()
+        
+        # Si no hay búsqueda, mostrar todos
+        if not busqueda:
+            for p in self.catalogo:
+                s = stock.get(p['id'], 0.0)
+                self.tree_catalogo.insert("", tk.END, values=(
+                    p['id'],
+                    p['nombre'],
+                    f"${int(round(p['costo'])):,}",
+                    f"${int(round(p['precio'])):,}",
+                    f"{s:.2f}"
+                ))
+            return
+        
+        # Procesar múltiples IDs separados por comas
+        ids_buscar = []
+        partes = busqueda.split(',')
+        
+        for parte in partes:
+            try:
+                id_num = int(parte.strip())
+                ids_buscar.append(id_num)
+            except ValueError:
+                continue
+        
+        # Si hay IDs válidos, filtrar y mostrar
+        if ids_buscar:
+            productos_encontrados = 0
+            for p in self.catalogo:
+                if p['id'] in ids_buscar:
+                    s = stock.get(p['id'], 0.0)
+                    self.tree_catalogo.insert("", tk.END, values=(
+                        p['id'],
+                        p['nombre'],
+                        f"${int(round(p['costo'])):,}",
+                        f"${int(round(p['precio'])):,}",
+                        f"{s:.2f}"
+                    ), tags=('encontrado',))
+                    productos_encontrados += 1
+            
+            # Resaltar los productos encontrados
+            if productos_encontrados > 0:
+                self.tree_catalogo.tag_configure('encontrado', background='#90EE90')
+    
+    def _limpiar_busqueda(self):
+        """Limpia el campo de búsqueda y muestra todos los productos"""
+        self.entry_buscar_id.delete(0, tk.END)
+        self._actualizar_tabla_catalogo()
+    
     # ========== ACCIONES ==========
     
     def _agregar_producto(self):
@@ -370,8 +441,14 @@ class InventarioApp:
         ventana.transient(self.root)
         ventana.grab_set()
         
-        # Calcular nuevo ID
-        nuevo_id = max([p['id'] for p in self.catalogo], default=0) + 1
+        # Calcular nuevo ID - buscar el primer ID disponible
+        ids_existentes = sorted([p['id'] for p in self.catalogo])
+        nuevo_id = 1
+        for id_actual in ids_existentes:
+            if id_actual == nuevo_id:
+                nuevo_id += 1
+            else:
+                break
         
         # Campos
         tk.Label(ventana, text=f"ID: {nuevo_id}", bg="white", font=("Arial", 10)).pack(pady=10)
@@ -411,6 +488,7 @@ class InventarioApp:
                 self.stock_inicial[nuevo_id] = 0.0
                 
                 self._actualizar_tablas()
+                self._guardar_automatico()
                 messagebox.showinfo("Éxito", "Producto agregado correctamente")
                 ventana.destroy()
                 
@@ -474,6 +552,7 @@ class InventarioApp:
                 producto['precio'] = round(precio)
                 
                 self._actualizar_tablas()
+                self._guardar_automatico()
                 messagebox.showinfo("Éxito", "Producto actualizado correctamente")
                 ventana.destroy()
                 
@@ -513,6 +592,7 @@ class InventarioApp:
                 del self.stock_inicial[pid]
             
             self._actualizar_tablas()
+            self._guardar_automatico()
             messagebox.showinfo("Éxito", "Producto eliminado correctamente")
     
     def _registrar_movimiento(self):
@@ -545,6 +625,7 @@ class InventarioApp:
             
             self.entry_cantidad.delete(0, tk.END)
             self._actualizar_tablas()
+            self._guardar_automatico()
             messagebox.showinfo("Éxito", "Movimiento registrado correctamente")
             
         except ValueError:
@@ -622,6 +703,9 @@ class InventarioApp:
             if nuevos_movimientos:
                 self.movimientos = nuevos_movimientos
             
+            # Guardar la ruta del archivo para auto-guardado
+            self.archivo_actual = ruta
+            
             self._actualizar_tablas()
             messagebox.showinfo("Éxito", f"Datos importados correctamente desde:\n{ruta}")
             
@@ -664,10 +748,59 @@ class InventarioApp:
                     fecha, pid, ent, sal = mov
                     w.writerow([fecha, pid, f"{ent:.2f}", f"{sal:.2f}"])
             
+            # Establecer este archivo como el archivo actual para auto-guardado
+            self.archivo_actual = ruta
+            
             messagebox.showinfo("Éxito", f"Datos exportados correctamente a:\n{ruta}")
             
         except Exception as e:
             messagebox.showerror("Error", f"Error al exportar CSV:\n{str(e)}")
+    
+    def _guardar_automatico(self):
+        """Guarda automáticamente los cambios en el archivo actual"""
+        if not self.archivo_actual:
+            return
+        
+        try:
+            stock = self._vector_stock_actual()
+            
+            with open(self.archivo_actual, 'w', newline='', encoding='utf-8') as f:
+                w = csv.writer(f)
+                w.writerow(["== REPORTE INVENTARIO BIO SALUD NATURAL SpA =="])
+                w.writerow([])
+                w.writerow(["CATALOGO"])
+                w.writerow(["id", "nombre", "costo", "precio", "stock_actual"])
+                for p in self.catalogo:
+                    w.writerow([p['id'], p['nombre'], f"{p['costo']:.2f}", 
+                               f"{p['precio']:.2f}", f"{stock.get(p['id'], 0.0):.2f}"])
+                
+                w.writerow([])
+                w.writerow(["RESUMEN"])
+                w.writerow(["valor_inventario", f"{self._valor_inventario():.2f}"])
+                w.writerow(["valor_venta_potencial", f"{self._valor_venta_potencial():.2f}"])
+                
+                w.writerow([])
+                w.writerow(["MOVIMIENTOS"])
+                w.writerow(["fecha", "id_producto", "entrada", "salida"])
+                for mov in self.movimientos:
+                    fecha, pid, ent, sal = mov
+                    w.writerow([fecha, pid, f"{ent:.2f}", f"{sal:.2f}"])
+        except Exception as e:
+            print(f"Error al guardar automáticamente: {e}")
+    
+    def _cerrar_aplicacion(self):
+        """Guarda los datos antes de cerrar la aplicación"""
+        if self.archivo_actual:
+            try:
+                self._guardar_automatico()
+                messagebox.showinfo("Guardado", "Los cambios se guardaron correctamente.")
+            except Exception as e:
+                if messagebox.askyesno("Error al guardar", 
+                    f"No se pudieron guardar los cambios:\n{str(e)}\n\n¿Desea cerrar de todos modos?"):
+                    self.root.destroy()
+                return
+        
+        self.root.destroy()
 
 
 def main():
